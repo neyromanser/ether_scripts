@@ -1,37 +1,40 @@
 #!/usr/bin/env python3
 
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import unicode_literals
-from web3 import Web3, HTTPProvider
-import bitcoin as b
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ #
+#        Ethereum sign and check message          #
+#              by Neyromanser 2018                #
+#  https://github.com/neyromanser/ether_scripts   #
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ #
+
+from web3 import Web3, IPCProvider, HTTPProvider
+import bitcoin
 import codecs
 import sha3
 
 
 class EthSigner:
 
-    w3 = None
-
-    def __init__(self, ipc=None, url=None):
+    @classmethod
+    def sign_message(cls, message, address, password, ipc=None, rpc_url=None):
         if ipc is not None:
-            self.w3 = Web3(Web3.IPCProvider(ipc))
-        elif url is not None:
-            self.w3 = Web3(HTTPProvider(url))
+            w3 = Web3(IPCProvider(ipc))
+        elif rpc_url is not None:
+            w3 = Web3(HTTPProvider(rpc_url))
 
-    def sign_message(self, message, address, password):
-        sha = self.w3.sha3(text=message)
-        self.w3.personal.unlockAccount(address, password)
-        signature = self.w3.eth.sign(address, hexstr=sha)
+        sha = '0x' + cls.sha3(text=message)
+        w3.personal.unlockAccount(address, password)
+        signature = w3.eth.sign(address, hexstr=sha)
         return signature
 
-    def bytes_to_hex(self, string):
+    @staticmethod
+    def bytes_to_hex(string):
         hex_str = ''
         for let in string:
             hex_str += format(ord(let), "02x")
         return hex_str
 
-    def sha3(self, text=None, hexstr=None):
+    @staticmethod
+    def sha3(text=None, hexstr=None):
         k = sha3.keccak_256()
         if text is not None:
             k.update(text.encode('utf-8'))
@@ -40,11 +43,12 @@ class EthSigner:
 
         return k.hexdigest()
 
-    def check_sign(self, message, signature):
+    @classmethod
+    def check_sign(cls, message, signature):
         prefix = '\x19Ethereum Signed Message:\n32'
-        msghash = self.sha3(text=message)
-        full_message = self.bytes_to_hex(prefix) + msghash
-        full_hash = self.sha3(hexstr=full_message)
+        message_hash = cls.sha3(text=message)
+        full_message = cls.bytes_to_hex(prefix) + message_hash
+        full_hash = cls.sha3(hexstr=full_message)
 
         r = int(signature[0:66], 16)
         s = int('0x'+signature[66:130], 16)
@@ -52,9 +56,7 @@ class EthSigner:
         if not v == 27 and not v == 28:
             v += 27
 
-        recovered_addr = b.ecdsa_raw_recover(full_hash, (v, r, s))
-        pub = b.encode_pubkey(recovered_addr, 'bin')
-        address = self.sha3(hexstr=pub[1:].hex())[24:64]
+        recovered = bitcoin.ecdsa_raw_recover(full_hash, (v, r, s))
+        pub = bitcoin.encode_pubkey(recovered, 'bin')
+        address = cls.sha3(hexstr=pub[1:].hex())[24:64]
         return '0x' + address
-
-
